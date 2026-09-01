@@ -101,6 +101,14 @@ def run_prototype(image_path: str | Path, model_path: str | Path, conf: float = 
     context_data = context_builder.save_context_json(image_path, ocr_results, output_dir / "context.json")
 
     translator = OllamaVisionTranslator(model="qwen2.5vl:7b", target_language="English")
+    scene_summary = translator.summarize_scene(image_path, [item["text"] for item in context_data])
+    for item in context_data:
+        item["scene_summary"] = scene_summary
+        item["context_summary"] = (
+            item.get("context_summary", "")
+            + f"\nScene summary: {scene_summary}"
+        )
+
     translated = translator.translate_batch(context_data)
 
     with open(output_dir / "translation.json", "w", encoding="utf-8") as f:
