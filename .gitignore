@@ -1,0 +1,12 @@
+# reference repos
+/Manga-Text-Segmentation/
+/multimodal-manga-translation/
+/open-mantra-dataset/
+
+# local env
+/venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
