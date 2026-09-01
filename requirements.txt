@@ -1,0 +1,5 @@
+ultralytics>=8.4.136
+numpy>=2.0.0
+opencv-python>=4.7.0
+pillow>=10.0.0
+pandas>=2.0.0
