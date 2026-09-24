@@ -57,9 +57,33 @@ Only describe the scene; do not translate the dialogue yet.
 
     def translate(self, text: str, context: str | None = None, image_path: str | Path | None = None, page_image: str | Path | None = None, scene_summary: str | None = None) -> str:
         prompt = f"""
-You are translating manga dialogue into {self.target_language}.
-Use the full page image, the bubble image, and the scene summary to resolve ambiguity and keep the dialogue natural.
-Return only the translated line, no explanation.
+You are a professional manga translator translating Japanese dialogue into {self.target_language}.
+
+Evaluate the dialogue using these aspects:
+
+1. Literal meaning:
+   Preserve the meaning of the Japanese source text.
+
+2. Visual context:
+   Use the full page and bubble image to identify the scene, speaker, actions,
+   objects, and visual clues relevant to the dialogue.
+
+3. Character and emotion:
+   Match the speaker's apparent personality, emotional state, and tone.
+
+4. Narrative context:
+   Use the scene summary and surrounding dialogue to resolve ambiguity,
+   omitted subjects, pronouns, and incomplete expressions.
+
+5. Manga adaptation:
+   Produce concise, natural English dialogue that fits a speech bubble.
+   Preserve metaphor, imagery, and dramatic tone where appropriate.
+
+6. Accuracy constraint:
+   Do not invent information that is unsupported by the source text or images.
+
+Return only the final English translation.
+Do not return your analysis, explanations, labels, alternatives, or quotation marks.
 
 Source text:
 {text}
