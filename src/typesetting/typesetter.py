@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 def _load_font(size: int) -> ImageFont.ImageFont:
     candidate_paths = [
+        "C:/Windows/Fonts/anime-ace.regular.ttf",
         "C:/Windows/Fonts/msgothic.ttc",
         "C:/Windows/Fonts/meiryo.ttc",
         "C:/Windows/Fonts/mingliu.ttc",
