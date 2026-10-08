@@ -8,10 +8,7 @@ import numpy as np
 
 
 class BLEURTEvaluator:
-    """Evaluator using SacreBLEU for translation quality assessment.
-    
-    Uses SacreBLEU BLEU metric which is robust and widely accepted for
-    translation evaluation without complex dependencies.
+    """
     """
     
     def __init__(self):

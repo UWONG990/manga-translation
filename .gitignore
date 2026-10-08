@@ -6,6 +6,8 @@
 # local env
 /venv/
 .venv/
+/venv-bleurt/
+.venv-bleurt/
 
 # Python cache
 __pycache__/
