@@ -1,0 +1,9 @@
+-r requirements.txt
+gradio==3.50.2
+fastapi==0.104.1
+starlette==0.27.0
+pydantic==1.10.13
+anyio==3.7.1
+huggingface-hub==0.16.4
+transformers==4.35.2
+protobuf==4.25.8

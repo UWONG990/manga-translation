@@ -8,6 +8,11 @@
 .venv/
 /venv-bleurt/
 .venv-bleurt/
+/venv-ui/
+.venv-ui/
+
+# generated translation artifacts
+/outputs/
 
 # Python cache
 __pycache__/

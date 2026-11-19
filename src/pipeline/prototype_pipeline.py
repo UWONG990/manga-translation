@@ -61,7 +61,14 @@ def _smart_sort_text_boxes(text_boxes: list[dict], image_width: int = 800, image
     return ordered
 
 
-def run_prototype(image_path: str | Path, model_path: str | Path, conf: float = 0.25, output_dir: str | Path = "outputs"):
+def run_prototype(
+    image_path: str | Path,
+    model_path: str | Path,
+    conf: float = 0.25,
+    output_dir: str | Path = "outputs",
+    translator_model: str = "qwen2.5vl:7b",
+    ollama_host: str = "http://localhost:11434",
+):
     image_path = Path(image_path)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -100,7 +107,11 @@ def run_prototype(image_path: str | Path, model_path: str | Path, conf: float = 
     context_builder = ContextBuilder(output_dir / "contexts")
     context_data = context_builder.save_context_json(image_path, ocr_results, output_dir / "context.json")
 
-    translator = OllamaVisionTranslator(model="qwen2.5vl:7b", target_language="English")
+    translator = OllamaVisionTranslator(
+        model=translator_model,
+        host=ollama_host,
+        target_language="English",
+    )
     scene_summary = translator.summarize_scene(image_path, [item["text"] for item in context_data])
     for item in context_data:
         item["scene_summary"] = scene_summary
@@ -123,7 +134,7 @@ def run_prototype(image_path: str | Path, model_path: str | Path, conf: float = 
 
 def main():
     parser = argparse.ArgumentParser(description="Run the manga translation prototype pipeline.")
-    parser.add_argument("--image", default="open-mantra-dataset\images\balloon_dream\ja\010.jpg", help="Manga page image path.")
+    parser.add_argument("--image", default=r"open-mantra-dataset\images\balloon_dream\ja\010.jpg", help="Manga page image path.")
     parser.add_argument("--model", default="manga_panel_detector_fp32.pt", help="YOLO model path.")
     parser.add_argument("--conf", type=float, default=0.25, help="Detection confidence threshold.")
     args = parser.parse_args()
