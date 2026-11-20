@@ -142,7 +142,10 @@ Context:
 
         for item in contexts:
             page_image = item.get("page_image")
-            if page_image and page_image not in page_summary_by_image:
+            existing_summary = item.get("scene_summary")
+            if existing_summary and page_image:
+                page_summary_by_image[page_image] = existing_summary
+            elif page_image and page_image not in page_summary_by_image:
                 page_summary_by_image[page_image] = self.summarize_scene(
                     page_image,
                     [entry.get("text", "") for entry in contexts if entry.get("page_image") == page_image],
