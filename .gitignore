@@ -19,5 +19,5 @@ __pycache__/
 *.pyc
 
 /runs/
-
+/bleurt-checkpoints/
 command.txt

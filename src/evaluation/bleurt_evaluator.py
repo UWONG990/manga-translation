@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -8,48 +9,62 @@ import numpy as np
 
 
 class BLEURTEvaluator:
-    """
-    """
-    
-    def __init__(self):
+    """Score translations against references with a BLEURT checkpoint."""
+
+    def __init__(self, checkpoint: str | Path | None = None, scorer: Any | None = None):
+        if scorer is not None:
+            self.scorer = scorer
+            return
+
         try:
-            from sacrebleu import BLEU
-            self.metric = BLEU()
-        except ImportError:
-            raise ImportError("sacrebleu not installed. Run: pip install sacrebleu")
+            from bleurt.score import BleurtScorer
+        except ImportError as exc:
+            raise ImportError(
+                "BLEURT is not installed. Install it with: "
+                "pip install -r requirements-bleurt.txt"
+            ) from exc
+
+        checkpoint_value = checkpoint or os.environ.get("BLEURT_CHECKPOINT")
+        checkpoint_path = Path(checkpoint_value) if checkpoint_value else (
+            Path(__file__).resolve().parents[2] / "bleurt-checkpoints" / "BLEURT-20"
+        )
+        if not checkpoint_path.is_dir():
+            raise FileNotFoundError(
+                f"BLEURT checkpoint directory not found: {checkpoint_path}. "
+                "Extract a BLEURT checkpoint directory and set BLEURT_CHECKPOINT "
+                "to its path. BLEURT cannot load a .zip file directly."
+            )
+
+        self.scorer = BleurtScorer(checkpoint=str(checkpoint_path))
 
     def score_batch(self, hypotheses: list[str], references: list[str], sources: list[str] | None = None) -> dict[str, Any]:
-        """Score a batch of hypotheses against references using SacreBLEU.
+        """Score candidate translations against reference translations.
         
         Args:
-            hypotheses: List of translated texts
-            references: List of reference translations (or list of list for multiple references)
-            sources: Optional list of source texts (not used by BLEU but kept for compatibility)
+            hypotheses: Candidate translations.
+            references: Reference translations, one per candidate.
+            sources: Optional source texts, retained for call compatibility.
             
         Returns:
-            Dictionary with BLEU score and component scores
+            BLEURT scores and summary statistics.
         """
         if len(hypotheses) != len(references):
             raise ValueError("hypotheses and references must be same length")
+        if not hypotheses:
+            raise ValueError("hypotheses and references must not be empty")
 
-        # SacreBLEU expects references as a single string with multiple refs separated by newlines
-        # For now, we treat each reference as a single translation
-        sys_score = self.metric.corpus_score(hypotheses, [references])
-        
-        # Also compute individual sentence scores
-        sent_scores = []
-        for hyp, ref in zip(hypotheses, references):
-            score = self.metric.sentence_score(hyp, [ref])
-            sent_scores.append(score.score)
-        
+        scores = [
+            float(score)
+            for score in self.scorer.score(references=references, candidates=hypotheses)
+        ]
+        mean_score = float(np.mean(scores))
         return {
-            "scores": sent_scores,
-            "mean": float(np.mean(sent_scores)),
-            "std": float(np.std(sent_scores)) if len(sent_scores) > 1 else 0.0,
-            "min": float(np.min(sent_scores)),
-            "max": float(np.max(sent_scores)),
-            "corpus_bleu": sys_score.score,
-            "corpus_precisions": sys_score.precisions,
+            "metric": "BLEURT",
+            "scores": scores,
+            "mean": mean_score,
+            "std": float(np.std(scores)) if len(scores) > 1 else 0.0,
+            "min": float(np.min(scores)),
+            "max": float(np.max(scores)),
         }
 
     def evaluate_page(self, reference_data: dict[str, Any], hypothesis_data: list[dict[str, Any]]) -> dict[str, Any]:

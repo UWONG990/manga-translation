@@ -16,6 +16,16 @@ from src.evaluation.bleurt_evaluator import BLEURTEvaluator
 from src.evaluation.evaluate_page import load_annotation_by_image
 
 
+def find_translation_file(translation_dir: Path, book_name: str, image_name: str) -> Path | None:
+    page_stem = Path(image_name).stem
+    candidates = (
+        translation_dir / f"{page_stem}_translation.json",
+        translation_dir / f"{book_name}_{page_stem}" / "translation.json",
+        translation_dir / "translation.json",
+    )
+    return next((path for path in candidates if path.is_file()), None)
+
+
 def batch_evaluate(
     book_name: str,
     translation_dir: Path,
@@ -58,14 +68,10 @@ def batch_evaluate(
         # Extract filename (e.g., "000.jpg" from "images/balloon_dream/ja/000.jpg")
         image_name = Path(image_path).name
 
-        # Look for translation file
-        translation_file = translation_dir / f"{Path(image_name).stem}_translation.json"
-        if not translation_file.exists():
-            # Try default translation.json if processing single page
-            translation_file = translation_dir / "translation.json"
-            if not translation_file.exists():
-                print(f"  [SKIP] Page {image_name}: No translation file found")
-                continue
+        translation_file = find_translation_file(translation_dir, book_name, image_name)
+        if translation_file is None:
+            print(f"  [SKIP] Page {image_name}: No translation file found")
+            continue
 
         try:
             with open(translation_file, "r", encoding="utf-8") as f:
@@ -85,7 +91,7 @@ def batch_evaluate(
             all_scores.extend(result.get("scores", []))
 
             score_str = f"{result.get('mean', 0.0):.3f}"
-            print(f"  Page {image_name:10s} ({page_idx:2d}): BLEU={score_str}")
+            print(f"  Page {image_name:10s} ({page_idx:2d}): BLEURT={score_str}")
 
         except Exception as e:
             print(f"  [ERROR] Page {image_name}: {e}")
@@ -100,18 +106,18 @@ def batch_evaluate(
         "pages_evaluated": len(page_results),
         "total_pages": len(pages),
         "stats": {
-            "mean_bleu": float(np.mean(all_scores)),
-            "std_bleu": float(np.std(all_scores)),
-            "min_bleu": float(np.min(all_scores)),
-            "max_bleu": float(np.max(all_scores)),
-            "median_bleu": float(np.median(all_scores)),
+            "mean_bleurt": float(np.mean(all_scores)),
+            "std_bleurt": float(np.std(all_scores)),
+            "min_bleurt": float(np.min(all_scores)),
+            "max_bleurt": float(np.max(all_scores)),
+            "median_bleurt": float(np.median(all_scores)),
         },
         "page_results": page_results,
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Batch evaluate manga translations.")
+    parser = argparse.ArgumentParser(description="Batch evaluate manga translations with BLEURT.")
     parser.add_argument("--book", required=True, help="Book title (e.g., 'balloon_dream')")
     parser.add_argument("--translation-dir", default="outputs", help="Directory containing translation files")
     parser.add_argument("--annotation", default="open-mantra-dataset/annotation.json", help="Path to annotation.json")
@@ -141,9 +147,9 @@ def main():
     print(f"Summary for {result['book_name']}")
     print(f"{'='*60}")
     print(f"Pages evaluated: {result['pages_evaluated']}/{result['total_pages']}")
-    print(f"Mean BLEU: {result['stats']['mean_bleu']:.4f} ± {result['stats']['std_bleu']:.4f}")
-    print(f"BLEU range: [{result['stats']['min_bleu']:.4f}, {result['stats']['max_bleu']:.4f}]")
-    print(f"Median BLEU: {result['stats']['median_bleu']:.4f}")
+    print(f"Mean BLEURT: {result['stats']['mean_bleurt']:.4f} ± {result['stats']['std_bleurt']:.4f}")
+    print(f"BLEURT range: [{result['stats']['min_bleurt']:.4f}, {result['stats']['max_bleurt']:.4f}]")
+    print(f"Median BLEURT: {result['stats']['median_bleurt']:.4f}")
 
     # Save detailed results if requested
     if args.output:
