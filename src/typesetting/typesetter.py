@@ -43,6 +43,7 @@ def _load_font(size: int, font_path: str | Path | None = None) -> ImageFont.Imag
         "C:/Windows/Fonts/mingliu.ttc",
         "C:/Windows/Fonts/NotoSansCJK-Regular.ttc",
         "C:/Windows/Fonts/simsun.ttc",
+        "c:/Windows/Fonts/anime-ace.regular.ttf",
     ]
     for path in candidate_paths:
         try:
@@ -236,7 +237,7 @@ def build_editable_project(
         initial_font_size = max(
             10,
             min(
-                34,
+                24,
                 int(bubble_height / max(1.25 * line_count, 1.0)),
                 int(bubble_width / 8),
             ),
@@ -293,26 +294,40 @@ def export_editor_html(project: dict, output_path: str | Path) -> str:
     document = f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>Manga Typesetter</title>
 <style>
-body {{ margin:0; background:#151515; color:#fff; font-family:Segoe UI,Arial,sans-serif; overflow-x:hidden; }}
-#toolbar {{ position:sticky; top:0; z-index:3; background:#202020; padding:8px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }}
+body {{ margin:0; background:#f5f5f5; color:#202124; font-family:Segoe UI,Arial,sans-serif; overflow-x:hidden; }}
+body.dark {{ background:#151515; color:#ffffff; }}
+#toolbar {{ position:sticky; top:0; z-index:3; background:#ffffff; color:#202124; border-bottom:1px solid #d9dde3; padding:8px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }}
+body.dark #toolbar {{ background:#202020; color:#ffffff; border-bottom-color:#3a3a3a; }}
 #toolbar label {{ display:flex; align-items:center; gap:4px; }}
-#viewport {{ width:100%; height:calc(100vh - 58px); overflow:auto; background:#252525; }}
+#viewport {{ width:100%; height:calc(100vh - 58px); overflow:auto; background:#eceff3; }}
+body.dark #viewport {{ background:#252525; }}
 #stageShell {{ position:relative; margin:12px auto; }}
-#editor {{ position:absolute; left:0; top:0; width:{width}px; height:{height}px; transform-origin:0 0; background:url("{data_uri}") center/contain no-repeat; background-size:{width}px {height}px; }}
+#editor {{ position:absolute; left:0; top:0; width:{width}px; height:{height}px; transform-origin:0 0; background:url("{data_uri}") center/contain no-repeat; background-size:{width}px {height}px; --handle-scale:1; }}
 .bubble {{ position:absolute; border:2px solid #141414; border-radius:12px; background:rgba(255,255,255,.92); box-sizing:border-box; cursor:move; touch-action:none; }}
 .bubble.selected {{ outline:3px solid #4da3ff; }}
 .bubble textarea {{ width:100%; height:100%; resize:none; border:0; outline:0; background:transparent; text-align:center; box-sizing:border-box; padding:8px; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; word-break:normal; line-height:1.2; }}
-.handle {{ position:absolute; width:12px; height:12px; right:-7px; bottom:-7px; border-radius:50%; background:#4da3ff; cursor:nwse-resize; }}
+.handle {{ position:absolute; background:#4da3ff; border:1px solid #fff; border-radius:3px; display:none; z-index:5; box-sizing:border-box; transform:scale(var(--handle-scale,1)); }}
+.bubble.selected .handle {{ display:block; }}
+.h-nw {{ width:12px; height:12px; left:-6px; top:-6px; cursor:nwse-resize; border-radius:50%; }}
+.h-n {{ width:18px; height:8px; left:50%; top:-4px; margin-left:-9px; cursor:ns-resize; }}
+.h-ne {{ width:12px; height:12px; right:-6px; top:-6px; cursor:nesw-resize; border-radius:50%; }}
+.h-e {{ width:8px; height:18px; right:-4px; top:50%; margin-top:-9px; cursor:ew-resize; }}
+.h-se {{ width:12px; height:12px; right:-6px; bottom:-6px; cursor:nwse-resize; border-radius:50%; }}
+.h-s {{ width:18px; height:8px; left:50%; bottom:-4px; margin-left:-9px; cursor:ns-resize; }}
+.h-sw {{ width:12px; height:12px; left:-6px; bottom:-6px; cursor:nesw-resize; border-radius:50%; }}
+.h-w {{ width:8px; height:18px; left:-4px; top:50%; margin-top:-9px; cursor:ew-resize; }}
 </style></head><body>
 <div id="toolbar">
-  <label>Font <select id="fontChoice"><option>Automatic</option><option>Arial</option><option>Comic Sans MS</option><option>Calibri</option><option>Consolas</option><option>Segoe UI</option></select></label>
-  <label>Size <input id="fontSize" type="number" min="8" max="96" value="34"></label>
+  <label>Font <select id="fontChoice"><option>Automatic</option><option>Arial</option><option>Comic Sans MS</option><option>Calibri</option><option>Consolas</option><option>Segoe UI</option><option>Anime Ace</option></select></label>
+  <label>Size <input id="fontSize" type="number" min="8" max="96" value="24"></label>
   <label>Text <input id="textColor" type="color" value="#000000"></label>
   <label>Transparent text <input id="transparentText" type="checkbox"></label>
   <label>Fill <input id="fillColor" type="color" value="#ffffff"></label>
   <label>Transparent fill <input id="transparentFill" type="checkbox"></label>
   <label>Outline <input id="outlineColor" type="color" value="#141414"></label>
+  <label>Transparent outline <input id="transparentOutline" type="checkbox"></label>
   <label>Alignment <select id="alignment"><option>left</option><option>center</option><option>right</option></select></label>
+  <label>Dark mode <input id="themeToggle" type="checkbox"></label>
   <button id="enableAutoFit">Auto fit text</button>
   <button id="saveJson">Save project JSON</button>
   <button id="exportPng">Export final PNG</button>
@@ -322,6 +337,15 @@ body {{ margin:0; background:#151515; color:#fff; font-family:Segoe UI,Arial,san
 const project = {project_json};
 const editor = document.getElementById("editor");
 let selected = null;
+
+const themeToggle = document.getElementById("themeToggle");
+const savedTheme = localStorage.getItem("mangaTypesetterTheme");
+themeToggle.checked = savedTheme === "dark";
+document.body.classList.toggle("dark", themeToggle.checked);
+themeToggle.addEventListener("change", () => {{
+  document.body.classList.toggle("dark", themeToggle.checked);
+  localStorage.setItem("mangaTypesetterTheme", themeToggle.checked ? "dark" : "light");
+}});
 
 function wrapAndFit(el, bubble) {{
   if (bubble.auto_fit === false) {{
@@ -333,16 +357,22 @@ function wrapAndFit(el, bubble) {{
   textarea.style.height = "100%";
   textarea.style.whiteSpace = "pre-wrap";
   textarea.style.overflow = "hidden";
-  let size = bubble.font_size || 34;
-  textarea.style.fontSize = size + "px";
   const innerWidth = Math.max(20, el.clientWidth - 16);
   const innerHeight = Math.max(20, el.clientHeight - 16);
-  for (; size >= 10; size -= 1) {{
+  const fits = (size) => {{
     textarea.style.fontSize = size + "px";
-    if (textarea.scrollHeight <= innerHeight && textarea.scrollWidth <= innerWidth) {{
-      break;
+    return textarea.scrollHeight <= innerHeight && textarea.scrollWidth <= innerWidth;
+  }};
+  let best = 24;
+  if (fits(24)) {{
+    let lo = 24, hi = 300;
+    while (lo <= hi) {{
+      const mid = (lo + hi) >> 1;
+      if (fits(mid)) {{ best = mid; lo = mid + 1; }}
+      else {{ hi = mid - 1; }}
     }}
   }}
+  const size = best;
   bubble.font_size = size;
   textarea.style.fontSize = size + "px";
 }}
@@ -356,6 +386,7 @@ function fitStage() {{
   const scale = Math.min(1, availableWidth / {width}, availableHeight / {height});
   stageScale = scale;
   editor.style.transform = "scale(" + scale + ")";
+  editor.style.setProperty("--handle-scale", (1 / scale));
   stageShell.style.width = ({width} * scale) + "px";
   stageShell.style.height = ({height} * scale) + "px";
 }}
@@ -373,6 +404,42 @@ function selectBubble(el) {{
   document.getElementById("alignment").value = bubble.alignment;
   document.getElementById("transparentText").checked = bubble.text_color === "transparent";
   document.getElementById("transparentFill").checked = bubble.bubble_fill === "transparent";
+  document.getElementById("transparentOutline").checked = bubble.bubble_outline === "transparent";
+}}
+
+function startResize(e, el, bubble, dir) {{
+  e.preventDefault();
+  e.stopPropagation();
+  selectBubble(el);
+  const startX=e.clientX, startY=e.clientY;
+  const left0=el.offsetLeft, top0=el.offsetTop;
+  const width0=el.offsetWidth, height0=el.offsetHeight;
+  const move=(ev) => {{
+    const dx=(ev.clientX-startX)/stageScale;
+    const dy=(ev.clientY-startY)/stageScale;
+    let newLeft=left0, newTop=top0, newW=width0, newH=height0;
+    if (dir.includes("e")) newW=width0+dx;
+    if (dir.includes("s")) newH=height0+dy;
+    if (dir.includes("w")) {{ newW=width0-dx; newLeft=left0+dx; }}
+    if (dir.includes("n")) {{ newH=height0-dy; newTop=top0+dy; }}
+    if (newLeft<0) {{ newW+=newLeft; newLeft=0; }}
+    if (newTop<0) {{ newH+=newTop; newTop=0; }}
+    if (newLeft+newW>{width}) newW={width}-newLeft;
+    if (newTop+newH>{height}) newH={height}-newTop;
+    newW=Math.max(30,newW);
+    newH=Math.max(20,newH);
+    el.style.left=newLeft+"px";
+    el.style.top=newTop+"px";
+    el.style.width=newW+"px";
+    el.style.height=newH+"px";
+  }};
+  const up=()=>{{
+    document.removeEventListener("pointermove",move);
+    document.removeEventListener("pointerup",up);
+    sync();
+  }};
+  document.addEventListener("pointermove",move);
+  document.addEventListener("pointerup",up);
 }}
 
 function renderBubble(bubble) {{
@@ -387,11 +454,18 @@ function renderBubble(bubble) {{
   el.style.background = bubble.bubble_fill;
   el.style.borderColor = bubble.bubble_outline;
   el.style.color = bubble.text_color;
-  el.innerHTML = '<textarea></textarea><div class="handle"></div>';
+  el.innerHTML = '<textarea></textarea>';
   const textarea = el.querySelector("textarea");
   textarea.value = bubble.text;
   textarea.style.fontSize = bubble.font_size + "px";
   textarea.style.textAlign = bubble.alignment;
+  ["nw","n","ne","e","se","s","sw","w"].forEach((dir) => {{
+    const handle = document.createElement("div");
+    handle.className = "handle h-" + dir;
+    handle.dataset.dir = dir;
+    handle.addEventListener("pointerdown", (ev) => startResize(ev, el, bubble, dir));
+    el.appendChild(handle);
+  }});
   requestAnimationFrame(() => wrapAndFit(el, bubble));
   el.addEventListener("pointerdown", e => {{
     if (e.target.classList.contains("handle")) return;
@@ -401,44 +475,49 @@ function renderBubble(bubble) {{
       el.style.left = Math.max(0, Math.min({width}-el.offsetWidth, left+(ev.clientX-startX)/stageScale))+"px";
       el.style.top = Math.max(0, Math.min({height}-el.offsetHeight, top+(ev.clientY-startY)/stageScale))+"px";
     }}
-    function up() {{ document.removeEventListener("pointermove",move); document.removeEventListener("pointerup",up); sync(); }}
-    document.addEventListener("pointermove",move); document.addEventListener("pointerup",up);
-  }});
-  el.querySelector(".handle").addEventListener("pointerdown", e => {{
-    e.stopPropagation(); selectBubble(el);
-    const startX=e.clientX, startY=e.clientY, width0=el.offsetWidth, height0=el.offsetHeight;
-    function move(ev) {{
-      el.style.width = Math.max(30, width0+(ev.clientX-startX)/stageScale)+"px";
-      el.style.height = Math.max(20, height0+(ev.clientY-startY)/stageScale)+"px";
+    function up() {{
+      document.removeEventListener("pointermove",move);
+      document.removeEventListener("pointerup",up);
+      sync();
+      if (bubble.auto_fit) requestAnimationFrame(() => wrapAndFit(el, bubble));
     }}
-    function up() {{ document.removeEventListener("pointermove",move); document.removeEventListener("pointerup",up); sync(); }}
     document.addEventListener("pointermove",move); document.addEventListener("pointerup",up);
   }});
   textarea.addEventListener("input", sync);
-  textarea.addEventListener("input", () => requestAnimationFrame(() => wrapAndFit(el, bubble)));
+  textarea.addEventListener("input", () => {{
+    if (bubble.auto_fit) {{
+      wrapAndFit(el, bubble);
+    }}
+  }});
   editor.appendChild(el);
 }}
 function sync() {{
   if (!selected) return;
   const bubble=project.bubbles.find(b=>b.id===selected.dataset.id);
   bubble.text=selected.querySelector("textarea").value;
-  const sizeInput=parseInt(document.getElementById("fontSize").value)||34;
-  bubble.font_size=sizeInput;
-  bubble.auto_fit=false;
+  const explicitFontChange = document.activeElement === document.getElementById("fontSize");
+  if (explicitFontChange) {{
+    bubble.font_size=parseInt(document.getElementById("fontSize").value)||24;
+    bubble.auto_fit=false;
+  }}
   bubble.text_color=document.getElementById("transparentText").checked
     ? "transparent"
     : document.getElementById("textColor").value;
   bubble.bubble_fill=document.getElementById("transparentFill").checked
     ? "transparent"
     : document.getElementById("fillColor").value;
-  bubble.bubble_outline=document.getElementById("outlineColor").value;
+  bubble.bubble_outline=document.getElementById("transparentOutline").checked
+    ? "transparent"
+    : document.getElementById("outlineColor").value;
   bubble.alignment=document.getElementById("alignment").value;
   const textarea=selected.querySelector("textarea");
   textarea.style.fontSize=bubble.font_size+"px";
   textarea.style.textAlign=bubble.alignment;
   selected.style.color=bubble.text_color==="transparent"?"transparent":bubble.text_color;
   selected.style.background=bubble.bubble_fill==="transparent"?"transparent":bubble.bubble_fill;
-  selected.style.borderColor=bubble.bubble_outline;
+  selected.style.borderColor=bubble.bubble_outline==="transparent"
+    ? "transparent"
+    : bubble.bubble_outline;
   const font=document.getElementById("fontChoice").value;
   bubble.font=font;
   textarea.style.fontFamily=font==="Automatic"?"inherit":font;
@@ -448,7 +527,7 @@ function sync() {{
   ];
   requestAnimationFrame(() => wrapAndFit(selected, bubble));
 }}
-["fontSize","textColor","fillColor","outlineColor","alignment","fontChoice","transparentText","transparentFill"].forEach(id =>
+["fontSize","textColor","fillColor","outlineColor","alignment","fontChoice","transparentText","transparentFill","transparentOutline"].forEach(id =>
   document.getElementById(id).addEventListener("change", sync));
 document.getElementById("fontSize").addEventListener("input", () => {{
   if (!selected) return;
@@ -461,6 +540,8 @@ document.getElementById("enableAutoFit").addEventListener("click", () => {{
   if (!selected) return;
   const bubble=project.bubbles.find(b=>b.id===selected.dataset.id);
   bubble.auto_fit=true;
+  bubble.font_size=24;
+  document.getElementById("fontSize").value=24;
   wrapAndFit(selected,bubble);
 }});
 project.bubbles.forEach(renderBubble);
@@ -497,7 +578,9 @@ document.getElementById("exportPng").addEventListener("click", () => {{
       }}
       if (bubble.text_color === "transparent") return;
       ctx.fillStyle=bubble.text_color;
-      ctx.font=(bubble.font==="Automatic"?"34px":bubble.font_size+"px")+" sans-serif";
+      const px=bubble.font_size||24;
+      const family=(bubble.font&&bubble.font!="Automatic")?bubble.font:"sans-serif";
+      ctx.font=px+"px "+family;
       ctx.textAlign=bubble.alignment;
       ctx.textBaseline="middle";
       const anchor=bubble.alignment==="left"?x1+10:bubble.alignment==="right"?x2-10:(x1+x2)/2;
