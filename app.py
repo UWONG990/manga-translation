@@ -10,9 +10,14 @@ REPO_ROOT = Path(__file__).resolve().parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.pipeline.postprocess_pipeline import run_postprocess
 from src.pipeline.prototype_pipeline import run_prototype
-from src.typesetting.typesetter import render_translated_page
+from src.inpainting.inpaint import inpaint_text_regions
+from src.typesetting.typesetter import (
+    build_editable_project,
+    export_editor_html,
+    render_translated_page,
+    save_editable_project,
+)
 
 FONT_CHOICES = {
     "Automatic": None,
@@ -81,106 +86,62 @@ def translate_page(
             for item in sorted(translations, key=lambda item: item["index"])
         ]
 
-        inpainted_path = None
-        typeset_path = None
+        postprocess_dir = temp_root / "postprocess"
+        postprocess_dir.mkdir(parents=True, exist_ok=True)
+        inpainted_path = postprocess_dir / f"{Path(image_path).stem}_inpainted.png"
         if postprocess:
-            postprocess_dir = temp_root / "postprocess"
-            processed = run_postprocess(
+            inpaint_text_regions(
                 image_path,
-                temp_root / "translation.json",
-                postprocess_dir,
-                selected_font,
+                [item["bbox"] for item in translations],
+                inpainted_path,
             )
-            inpainted_path = processed["inpainted"]
-            typeset_path = processed["typeset"]
+        else:
+            inpainted_path = Path(image_path)
+
+        project = build_editable_project(
+            image_path,
+            inpainted_path,
+            translations,
+            selected_font,
+        )
+        project_path = save_editable_project(
+            project,
+            temp_root / "typesetter_project.json",
+        )
+        editor_path = export_editor_html(
+            project,
+            temp_root / "typesetter_editor.html",
+        )
 
         scene_summary = next(
             (item.get("scene_summary") for item in translations if item.get("scene_summary")),
             "No scene summary was generated.",
         )
-        used_font = processed.get("font", "Not used") if postprocess else "Not used"
         status = (
             f"Translation complete: {len(translations)} bubble(s) processed. "
-            f"Font: {used_font}"
+            "Interactive editor generated."
         )
         state = {
             "inpainted_path": inpainted_path,
             "translation_data": translations,
             "output_dir": str(temp_root),
         }
-        return typeset_path, inpainted_path, rows, scene_summary, status, state
+        editor_embed = (
+            f'<iframe src="/file={editor_path}" '
+            'style="width:100%;height:520px;border:0;border-radius:8px;background:#fff;"></iframe>'
+        )
+        return (
+            str(inpainted_path),
+            rows,
+            scene_summary,
+            status,
+            state,
+            project_path,
+            editor_path,
+            editor_embed,
+        )
     except Exception as exc:
         raise gr.Error(f"Translation failed: {type(exc).__name__}: {exc}") from exc
-
-
-def apply_formatting(
-    bubble_rows,
-    state,
-    font_choice,
-    custom_font,
-    max_font_size,
-    text_color,
-    bubble_fill,
-    bubble_outline,
-    bubble_padding,
-    alignment,
-):
-    if not state or not state.get("inpainted_path"):
-        raise gr.Error("Translate a page before applying formatting.")
-
-    if isinstance(custom_font, dict):
-        custom_font = custom_font.get("name") or custom_font.get("path")
-    elif isinstance(custom_font, (list, tuple)):
-        custom_font = custom_font[0] if custom_font else None
-    selected_font = custom_font if custom_font else FONT_CHOICES.get(font_choice)
-    if selected_font and not Path(selected_font).exists():
-        raise gr.Error(f"Selected font file was not found: {selected_font}")
-
-    translations = list(state["translation_data"])
-    edited_by_index = {}
-    for row in bubble_rows or []:
-        if isinstance(row, dict):
-            bubble_index = row.get("Bubble")
-            translated_text = row.get("Translation")
-        elif isinstance(row, (list, tuple)) and len(row) >= 3:
-            bubble_index = row[0]
-            translated_text = row[2]
-        else:
-            continue
-        if bubble_index is not None:
-            edited_by_index[int(bubble_index)] = translated_text
-
-    for item in translations:
-        if item["index"] in edited_by_index:
-            item["translated_text"] = edited_by_index[item["index"]]
-
-    output_dir = Path(state["output_dir"])
-    rendered_path = output_dir / "user_typeset.png"
-    render_translated_page(
-        state["inpainted_path"],
-        translations,
-        rendered_path,
-        selected_font,
-        int(max_font_size),
-        text_color,
-        bubble_fill,
-        bubble_outline,
-        float(bubble_padding),
-        alignment,
-    )
-
-    state["translation_data"] = translations
-    font_label = resolve_font_label(selected_font)
-    return str(rendered_path), state, f"Formatting applied with font: {font_label}"
-
-
-def resolve_font_label(font_path):
-    if not font_path:
-        return "Automatic"
-    for name, path in FONT_CHOICES.items():
-        if path == font_path:
-            return name
-    return str(font_path)
 
 
 with gr.Blocks(title="Manga Translation") as demo:
@@ -221,52 +182,29 @@ with gr.Blocks(title="Manga Translation") as demo:
             )
             postprocess = gr.Checkbox(
                 value=True,
-                label="Inpaint text and typeset translations",
+                label="Inpaint original text",
             )
             translate_button = gr.Button("Translate page", variant="primary")
 
         with gr.Column(scale=2):
-            typeset_output = gr.Image(label="Translated page")
             inpainted_output = gr.Image(label="Inpainted page")
+            editor_link = gr.HTML(
+                "<p>The interactive editor appears here after translation.</p>"
+            )
 
     bubble_table = gr.Dataframe(
         headers=["Bubble", "Source", "Translation"],
         datatype=["number", "str", "str"],
-        label="Translations",
+        label="Detected translations",
         wrap=True,
-        interactive=True,
+        interactive=False,
     )
     translation_state = gr.State()
 
-    gr.Markdown("## Edit and typeset")
-    with gr.Row():
-        max_font_size = gr.Slider(
-            minimum=8,
-            maximum=34,
-            value=34,
-            step=1,
-            label="Maximum font size",
-        )
-        text_color = gr.ColorPicker(value="#000000", label="Text color")
-        bubble_fill = gr.ColorPicker(value="#FFFFFF", label="Bubble fill")
-        bubble_outline = gr.ColorPicker(value="#141414", label="Bubble outline")
-    with gr.Row():
-        bubble_padding = gr.Slider(
-            minimum=0.5,
-            maximum=1.5,
-            value=1.0,
-            step=0.1,
-            label="Bubble padding",
-        )
-        alignment = gr.Radio(
-            choices=["left", "center", "right"],
-            value="center",
-            label="Text alignment",
-        )
-        apply_formatting_button = gr.Button("Apply text and formatting", variant="primary")
-
     scene_output = gr.Textbox(label="Scene summary", lines=5)
     status_output = gr.Textbox(label="Status")
+    project_download = gr.File(label="Editable project JSON")
+    editor_download = gr.File(label="Interactive typesetter HTML")
 
     translate_button.click(
         fn=translate_page,
@@ -281,30 +219,15 @@ with gr.Blocks(title="Manga Translation") as demo:
             custom_font,
         ],
         outputs=[
-            typeset_output,
             inpainted_output,
             bubble_table,
             scene_output,
             status_output,
             translation_state,
+            project_download,
+            editor_download,
+            editor_link,
         ],
-    )
-
-    apply_formatting_button.click(
-        fn=apply_formatting,
-        inputs=[
-            bubble_table,
-            translation_state,
-            font_choice,
-            custom_font,
-            max_font_size,
-            text_color,
-            bubble_fill,
-            bubble_outline,
-            bubble_padding,
-            alignment,
-        ],
-        outputs=[typeset_output, translation_state, status_output],
     )
 
 

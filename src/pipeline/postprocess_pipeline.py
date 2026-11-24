@@ -8,7 +8,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.inpainting.inpaint import inpaint_text_regions
-from src.typesetting.typesetter import render_translated_page, resolve_font_path
+from src.typesetting.typesetter import (
+    build_editable_project,
+    export_editor_html,
+    render_translated_page,
+    resolve_font_path,
+    save_editable_project,
+)
 
 
 def run_postprocess(
@@ -49,10 +55,23 @@ def run_postprocess(
         alignment,
     )
 
+    project = build_editable_project(
+        image_path,
+        inpainted_path,
+        translations,
+        font_path,
+    )
+    project_path = output_dir / "typesetter_project.json"
+    editor_path = output_dir / "typesetter_editor.html"
+    save_editable_project(project, project_path)
+    export_editor_html(project, editor_path)
+
     return {
         "inpainted": str(inpainted_path),
         "typeset": str(rendered_path),
         "font": resolve_font_path(font_path) or "Automatic",
+        "project": str(project_path),
+        "editor": str(editor_path),
     }
 
 
