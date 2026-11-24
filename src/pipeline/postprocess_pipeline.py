@@ -8,10 +8,21 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.inpainting.inpaint import inpaint_text_regions
-from src.typesetting.typesetter import render_translated_page
+from src.typesetting.typesetter import render_translated_page, resolve_font_path
 
 
-def run_postprocess(image_path: str | Path, translation_json: str | Path, output_dir: str | Path = "outputs/postprocess"):
+def run_postprocess(
+    image_path: str | Path,
+    translation_json: str | Path,
+    output_dir: str | Path = "outputs/postprocess",
+    font_path: str | Path | None = None,
+    max_font_size: int = 34,
+    text_color: str = "#000000",
+    bubble_fill: str = "#FFFFFF",
+    bubble_outline: str = "#141414",
+    bubble_padding: float = 1.0,
+    alignment: str = "center",
+):
     image_path = Path(image_path)
     translation_json = Path(translation_json)
     output_dir = Path(output_dir)
@@ -25,11 +36,23 @@ def run_postprocess(image_path: str | Path, translation_json: str | Path, output
     inpaint_text_regions(image_path, boxes, inpainted_path)
 
     rendered_path = output_dir / f"{image_path.stem}_typeset.png"
-    render_translated_page(inpainted_path, translations, rendered_path)
+    render_translated_page(
+        inpainted_path,
+        translations,
+        rendered_path,
+        font_path,
+        max_font_size,
+        text_color,
+        bubble_fill,
+        bubble_outline,
+        bubble_padding,
+        alignment,
+    )
 
     return {
         "inpainted": str(inpainted_path),
         "typeset": str(rendered_path),
+        "font": resolve_font_path(font_path) or "Automatic",
     }
 
 
@@ -38,9 +61,10 @@ def main():
     parser.add_argument("--image", required=True, help="Original manga page image")
     parser.add_argument("--translation", required=True, help="JSON translation output")
     parser.add_argument("--out-dir", default="outputs/postprocess", help="Directory for rendered outputs")
+    parser.add_argument("--font", help="Path to a custom TTF or TTC font")
     args = parser.parse_args()
 
-    result = run_postprocess(args.image, args.translation, args.out_dir)
+    result = run_postprocess(args.image, args.translation, args.out_dir, args.font)
     print(json.dumps(result, indent=2))
 
 

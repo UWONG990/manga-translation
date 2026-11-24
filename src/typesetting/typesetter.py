@@ -5,7 +5,34 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 
-def _load_font(size: int) -> ImageFont.ImageFont:
+def resolve_font_path(font_path: str | Path | None = None) -> str | None:
+    if font_path:
+        resolved = Path(font_path)
+        if resolved.exists():
+            return str(resolved)
+    return None
+
+
+def hex_to_rgba(color: str, alpha: int = 255) -> tuple[int, int, int, int]:
+    value = color.strip().lstrip("#")
+    if len(value) == 3:
+        value = "".join(ch * 2 for ch in value)
+    if len(value) != 6:
+        return (0, 0, 0, alpha)
+    try:
+        return (*[int(value[i:i + 2], 16) for i in range(0, 6, 2)], alpha)
+    except ValueError:
+        return (0, 0, 0, alpha)
+
+
+def _load_font(size: int, font_path: str | Path | None = None) -> ImageFont.ImageFont:
+    resolved = resolve_font_path(font_path)
+    if resolved:
+        try:
+            return ImageFont.truetype(resolved, size=size)
+        except OSError:
+            pass
+
     candidate_paths = [
         "C:/Windows/Fonts/anime-ace.regular.ttf",
         "C:/Windows/Fonts/msgothic.ttc",
@@ -63,22 +90,39 @@ def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, 
     return lines
 
 
-def _fit_font(draw: ImageDraw.ImageDraw, text: str, box: tuple[float, float, float, float]) -> ImageFont.ImageFont:
+def _fit_font(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    box: tuple[float, float, float, float],
+    font_path: str | Path | None = None,
+    max_font_size: int = 34,
+) -> ImageFont.ImageFont:
     left, top, right, bottom = box
     max_w = max(12.0, right - left)
     max_h = max(12.0, bottom - top)
 
-    for size in range(34, 7, -1):
-        font = _load_font(size)
+    for size in range(max(10, min(34, max_font_size)), 7, -1):
+        font = _load_font(size, font_path)
         wrapped = _wrap_text(draw, text, font, max_w * 0.9)
         line_height = draw.textbbox((0, 0), "A", font=font)[3]
         total_h = len(wrapped) * line_height * 1.25
         if total_h <= max_h * 0.9:
             return font
-    return _load_font(10)
+    return _load_font(10, font_path)
 
 
-def render_translated_page(page_image_path: str | Path, translated_items: list[dict], output_path: str | Path):
+def render_translated_page(
+    page_image_path: str | Path,
+    translated_items: list[dict],
+    output_path: str | Path,
+    font_path: str | Path | None = None,
+    max_font_size: int = 34,
+    text_color: str = "#000000",
+    bubble_fill: str = "#FFFFFF",
+    bubble_outline: str = "#141414",
+    bubble_padding: float = 1.0,
+    alignment: str = "center",
+):
     page_image = Image.open(page_image_path).convert("RGBA")
     canvas = Image.new("RGBA", page_image.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
@@ -97,7 +141,7 @@ def render_translated_page(page_image_path: str | Path, translated_items: list[d
         if x2 <= x1 or y2 <= y1:
             continue
 
-        pad = max(8.0, min(18.0, (y2 - y1) * 0.12))
+        pad = max(8.0, min(18.0, (y2 - y1) * 0.12)) * bubble_padding
         bubble_x1 = max(0.0, x1 - pad * 0.6)
         bubble_y1 = max(0.0, y1 - pad * 0.4)
         bubble_x2 = max(0.0, x2 + pad * 0.6)
@@ -110,8 +154,8 @@ def render_translated_page(page_image_path: str | Path, translated_items: list[d
         draw.rounded_rectangle(
             [bubble_x1, bubble_y1, bubble_x2, bubble_y2],
             radius=int(radius),
-            fill=(255, 255, 255, 180),
-            outline=(20, 20, 20, 220),
+            fill=hex_to_rgba(bubble_fill, 230),
+            outline=hex_to_rgba(bubble_outline, 220),
             width=2,
         )
 
@@ -119,7 +163,13 @@ def render_translated_page(page_image_path: str | Path, translated_items: list[d
         inner_y1 = bubble_y1 + pad * 0.6
         inner_x2 = bubble_x2 - pad * 0.7
         inner_y2 = bubble_y2 - pad * 0.6
-        font = _fit_font(draw, translated, (inner_x1, inner_y1, inner_x2, inner_y2))
+        font = _fit_font(
+            draw,
+            translated,
+            (inner_x1, inner_y1, inner_x2, inner_y2),
+            font_path,
+            max_font_size,
+        )
         lines = _wrap_text(draw, translated, font, inner_x2 - inner_x1)
         line_height = draw.textbbox((0, 0), "A", font=font)[3]
         total_h = len(lines) * line_height * 1.25
@@ -127,9 +177,21 @@ def render_translated_page(page_image_path: str | Path, translated_items: list[d
 
         for i, line in enumerate(lines):
             line_w = draw.textbbox((0, 0), line, font=font)[2]
-            x = inner_x1 + max(0, (inner_x2 - inner_x1 - line_w) / 2)
+            if alignment == "left":
+                x = inner_x1
+            elif alignment == "right":
+                x = inner_x2 - line_w
+            else:
+                x = inner_x1 + max(0, (inner_x2 - inner_x1 - line_w) / 2)
             y = start_y + i * line_height * 1.25
-            draw.text((x, y), line, fill=(0, 0, 0, 255), font=font, stroke_width=1, stroke_fill=(255, 255, 255, 180))
+            draw.text(
+                (x, y),
+                line,
+                fill=hex_to_rgba(text_color),
+                font=font,
+                stroke_width=1,
+                stroke_fill=hex_to_rgba(bubble_fill, 180),
+            )
 
     result = Image.alpha_composite(page_image, canvas).convert("RGB")
     output = Path(output_path)
