@@ -16,7 +16,6 @@ from src.typesetting.typesetter import (
     build_editable_project,
     export_editor_html,
     render_translated_page,
-    save_editable_project,
 )
 
 FONT_CHOICES = {
@@ -78,11 +77,7 @@ def translate_page(
 
         translations = result["translation"]
         rows = [
-            {
-                "Bubble": item["index"],
-                "Source": item["source_text"],
-                "Translation": item["translated_text"],
-            }
+            [item["index"], item["source_text"], item["translated_text"]]
             for item in sorted(translations, key=lambda item: item["index"])
         ]
 
@@ -103,10 +98,6 @@ def translate_page(
             inpainted_path,
             translations,
             selected_font,
-        )
-        project_path = save_editable_project(
-            project,
-            temp_root / "typesetter_project.json",
         )
         editor_path = export_editor_html(
             project,
@@ -136,8 +127,6 @@ def translate_page(
             scene_summary,
             status,
             state,
-            project_path,
-            editor_path,
             editor_embed,
         )
     except Exception as exc:
@@ -203,8 +192,6 @@ with gr.Blocks(title="Manga Translation") as demo:
 
     scene_output = gr.Textbox(label="Scene summary", lines=5)
     status_output = gr.Textbox(label="Status")
-    project_download = gr.File(label="Editable project JSON")
-    editor_download = gr.File(label="Interactive typesetter HTML")
 
     translate_button.click(
         fn=translate_page,
@@ -224,8 +211,6 @@ with gr.Blocks(title="Manga Translation") as demo:
             scene_output,
             status_output,
             translation_state,
-            project_download,
-            editor_download,
             editor_link,
         ],
     )
