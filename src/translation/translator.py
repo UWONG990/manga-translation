@@ -18,7 +18,7 @@ class OllamaVisionTranslator:
             return base64.b64encode(f.read()).decode("utf-8")
 
     def _chat(self, model: str, payload: dict[str, Any]) -> dict[str, Any]:
-        response = requests.post(f"{self.host}/api/chat", json={"model": model, **payload}, timeout=180)
+        response = requests.post(f"{self.host}/api/chat", json={"model": model, **payload, "options": {"temperature": 0.0}}, timeout=180)
         response.raise_for_status()
         return response.json()
 

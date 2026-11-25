@@ -12,6 +12,11 @@ if str(REPO_ROOT) not in sys.path:
 
 from src.pipeline.prototype_pipeline import run_prototype
 from src.inpainting.inpaint import inpaint_text_regions
+from src.translation.retranslation import (
+    retranslate_table_rows,
+    save_translation_results,
+)
+from src.translation.translator import OllamaVisionTranslator
 from src.typesetting.typesetter import (
     build_editable_project,
     export_editor_html,
@@ -77,7 +82,12 @@ def translate_page(
 
         translations = result["translation"]
         rows = [
-            [item["index"], item["source_text"], item["translated_text"]]
+            [
+                item["index"],
+                item["source_text"],
+                item["translated_text"],
+                *item["bbox"],
+            ]
             for item in sorted(translations, key=lambda item: item["index"])
         ]
 
@@ -116,6 +126,10 @@ def translate_page(
             "inpainted_path": inpainted_path,
             "translation_data": translations,
             "output_dir": str(temp_root),
+            "image_path": str(image_path),
+            "scene_summary": scene_summary,
+            "font_path": selected_font,
+            "postprocess": postprocess,
         }
         editor_embed = (
             f'<iframe src="/file={editor_path}" '
@@ -131,6 +145,64 @@ def translate_page(
         )
     except Exception as exc:
         raise gr.Error(f"Translation failed: {type(exc).__name__}: {exc}") from exc
+
+
+def retranslate_page_rows(table_rows, state, translator_model, ollama_host):
+    if not state or not state.get("translation_data"):
+        raise gr.Error("Translate a page before using Retranslate.")
+
+    try:
+        translator = OllamaVisionTranslator(
+            model=translator_model.strip() or "qwen2.5vl:7b",
+            host=ollama_host.strip() or "http://localhost:11434",
+        )
+        rows, translations = retranslate_table_rows(
+            table_rows,
+            state["translation_data"],
+            state.get("image_path", ""),
+            state.get("scene_summary", ""),
+            translator,
+            Path(state["output_dir"]) / "contexts",
+        )
+
+        updated_state = dict(state)
+        updated_state["translation_data"] = translations
+        output_dir = Path(state["output_dir"])
+        if state.get("postprocess"):
+            inpainted_path = inpaint_text_regions(
+                state["image_path"],
+                [item["bbox"] for item in translations],
+                output_dir / f"inpainted_{uuid.uuid4().hex}.png",
+            )
+        else:
+            inpainted_path = state["image_path"]
+        updated_state["inpainted_path"] = inpainted_path
+        project = build_editable_project(
+            state["image_path"],
+            inpainted_path,
+            translations,
+            state.get("font_path"),
+        )
+        editor_path = export_editor_html(
+            project,
+            output_dir / f"typesetter_editor_{uuid.uuid4().hex}.html",
+        )
+        save_translation_results(
+            translations,
+            output_dir / "translation.json",
+        )
+        editor_embed = (
+            f'<iframe src="/file={editor_path}" '
+            'style="width:100%;height:520px;border:0;border-radius:8px;background:#fff;"></iframe>'
+        )
+        status = (
+            f"Re-translated {len(translations)} row(s) with "
+            f"{translator.model}. YOLO and OCR were not rerun. "
+            "The typesetter includes all rows with their specified positions."
+        )
+        return str(inpainted_path), rows, updated_state, status, editor_embed
+    except Exception as exc:
+        raise gr.Error(f"Retranslation failed: {type(exc).__name__}: {exc}") from exc
 
 
 with gr.Blocks(title="Manga Translation") as demo:
@@ -182,13 +254,23 @@ with gr.Blocks(title="Manga Translation") as demo:
             )
 
     bubble_table = gr.Dataframe(
-        headers=["Bubble", "Source", "Translation"],
-        datatype=["number", "str", "str"],
+        headers=["Bubble", "Source", "Translation", "X1", "Y1", "X2", "Y2"],
+        datatype=["number", "str", "str", "number", "number", "number", "number"],
         label="Detected translations",
         wrap=True,
-        interactive=False,
+        interactive=True,
+        row_count=(1, "dynamic"),
+        col_count=(7, "fixed"),
+        type="array",
+    )
+    gr.Markdown(
+        "Edit the Source cells or add rows with the table's + control, then click "
+        "**Retranslate rows**. For new rows, enter the bubble rectangle as X1, Y1, "
+        "X2, Y2 in pixels from the top-left of the original page. These coordinates "
+        "are used to create its crop, inpaint its original text, and place it in the typesetter."
     )
     translation_state = gr.State()
+    retranslate_button = gr.Button("Retranslate rows")
 
     scene_output = gr.Textbox(label="Scene summary", lines=5)
     status_output = gr.Textbox(label="Status")
@@ -211,6 +293,22 @@ with gr.Blocks(title="Manga Translation") as demo:
             scene_output,
             status_output,
             translation_state,
+            editor_link,
+        ],
+    )
+    retranslate_button.click(
+        fn=retranslate_page_rows,
+        inputs=[
+            bubble_table,
+            translation_state,
+            translator_model,
+            ollama_host,
+        ],
+        outputs=[
+            inpainted_output,
+            bubble_table,
+            translation_state,
+            status_output,
             editor_link,
         ],
     )
